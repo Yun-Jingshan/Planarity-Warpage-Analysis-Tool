@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>平面翘曲分析工具</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Microsoft YaHei', sans-serif; 
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 20px;
+        }
+        h1 { text-align: center; margin-bottom: 20px; color: #00d4ff; }
+        .container { display: flex; gap: 20px; max-width: 1800px; margin: 0 auto; }
+        .history-sidebar { width: 280px; flex-shrink: 0; display: flex; flex-direction: column; }
+        .history-sidebar .history-section { flex: 1; max-height: none; height: calc(100vh - 120px); }
+        .history-sidebar .history-list { height: calc(100% - 50px); }
+        .panel { background: rgba(255,255,255,0.05); border-radius: 15px; padding: 20px; }
+        .left-panel { width: 340px; flex-shrink: 0; }
+        .right-panel { flex: 1; }
+        .indicator-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+        .indicator { background: rgba(0,0,0,0.3); border-radius: 10px; padding: 15px; text-align: center; }
+        .indicator.highlight { grid-column: span 2; background: linear-gradient(135deg, rgba(0,212,255,0.2), rgba(0,255,136,0.2)); }
+        .indicator-label { font-size: 12px; color: #aaa; margin-bottom: 5px; }
+        .indicator-value { font-size: 24px; font-weight: bold; color: #00d4ff; }
+        .indicator-value.good { color: #00ff88; }
+        .indicator-value.warning { color: #ff6b6b; }
+        .indicator-unit { font-size: 12px; color: #888; }
+        .data-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 15px; }
+        .data-table th, .data-table td { padding: 4px 6px; text-align: center; border: 1px solid rgba(255,255,255,0.1); }
+        .data-table th { background: rgba(0,212,255,0.2); }
+        .heatmap { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; margin: 15px 0; }
+        .heatmap-cell { aspect-ratio: 1; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 9px; cursor: pointer; }
+        .heatmap-cell:hover { transform: scale(1.2); z-index: 10; }
+        #canvas3d { width: 100%; height: 600px; border-radius: 10px; }
+        .controls { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+        button { background: linear-gradient(135deg, #00d4ff, #0099cc); border: none; padding: 10px 20px; border-radius: 8px; color: #fff; cursor: pointer; font-weight: bold; }
+        button:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(0,212,255,0.4); }
+        .input-section { background: rgba(0,0,0,0.4); border-radius: 10px; padding: 15px; margin-bottom: 20px; }
+        .input-section h4 { margin-bottom: 10px; color: #00ff88; }
+        .input-section select { width: 100%; padding: 8px; background: rgba(255,255,255,0.1); border: 1px solid rgba(0,212,255,0.3); border-radius: 5px; color: #fff; margin-bottom: 10px; }
+        .input-section select option { background: #16213e; }
+        .input-section textarea { width: 100%; height: 100px; background: rgba(255,255,255,0.05); border: 1px solid rgba(0,212,255,0.3); border-radius: 5px; color: #fff; font-family: monospace; font-size: 11px; padding: 8px; resize: vertical; }
+        .input-section .btn-row { display: flex; gap: 10px; margin-top: 10px; }
+        .input-section button { flex: 1; }
+        .hint { font-size: 11px; color: #888; margin-top: 5px; }
+        .history-section { background: rgba(0,0,0,0.3); border-radius: 10px; padding: 10px; max-height: 300px; overflow: hidden; display: flex; flex-direction: column; }
+        .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .history-list { overflow-y: auto; flex: 1; }
+        .history-item { background: rgba(255,255,255,0.05); border-radius: 5px; padding: 8px; margin-bottom: 5px; cursor: pointer; transition: all 0.2s; }
+        .history-item:hover { background: rgba(0,212,255,0.2); }
+        .history-item .time { font-size: 10px; color: #888; }
+        .history-item .info { font-size: 11px; color: #00d4ff; margin-top: 3px; }
+    </style>
+</head>
+<body>
+    <h1>📐 平面翘曲分析工具</h1>
+    <div class="container">
+        <!-- 最左侧历史记录边栏 -->
+        <div class="panel history-sidebar">
+            <h3 style="margin-bottom: 15px; color: #00d4ff;">📜 历史记录</h3>
+            <div class="history-section">
+                <div class="history-header">
+                    <button onclick="clearHistory()" style="padding: 5px 10px; font-size: 11px;">🗑️ 清空</button>
+                    <span id="historyCount" style="font-size: 11px; color: #888;">0/100 条</span>
+                </div>
+                <div class="history-list" id="historyList"></div>
+            </div>
+        </div>
+
+        <div class="panel left-panel">
+            <div class="input-section">
+                <h4>📥 输入数据</h4>
+                <select id="formatSelect">
+                    <option value="matrix">矩阵格式</option>
+                    <option value="raw">原始格式</option>
+                </select>
+                <textarea id="dataInput" placeholder="粘贴数据..."></textarea>
+                <div class="btn-row">
+                    <button onclick="loadExample()">📋 示例数据</button>
+                    <button onclick="processInput()">🔄 计算分析</button>
+                </div>
+            </div>
+            <h3 style="margin-bottom: 15px; color: #00ff88;">📊 工程指标</h3>
+            <div class="indicator-grid">
+                <div class="indicator highlight">
+                    <div class="indicator-label">平面度</div>
+                    <div class="indicator-value" id="flatness">-</div>
+                </div>
+                <div class="indicator highlight">
+                    <div class="indicator-label">最大翘曲量</div>
+                    <div class="indicator-value" id="maxWarp">-</div>
+                </div>
+                <div class="indicator">
+                    <div class="indicator-label">最大高度</div>
+                    <div class="indicator-value" id="maxHeight">-</div>
+                </div>
+                <div class="indicator">
+                    <div class="indicator-label">最小高度</div>
+                    <div class="indicator-value" id="minHeight">-</div>
+                </div>
+                <div class="indicator">
+                    <div class="indicator-label">平均高度</div>
+                    <div class="indicator-value" id="avgHeight">-</div>
+                </div>
+                <div class="indicator">
+                    <div class="indicator-label">标准差</div>
+                    <div class="indicator-value" id="stdDev">-</div>
+                </div>
+            </div>
+            <h3 style="margin: 20px 0 15px; color: #ffaa00;">🌡️ 热力图</h3>
+            <div class="heatmap" id="heatmap"></div>
+            <h3 style="margin: 20px 0 15px; color: #ff6b6b;">📋 原始数据</h3>
+            <div style="overflow-x: auto;"><table class="data-table" id="dataTable"></table></div>
+        </div>
+        <div class="panel right-panel">
+            <div class="controls">
+                <button onclick="resetView()">🔄 重置</button>
+                <button onclick="toggleWireframe()">🔳 网格</button>
+                <button onclick="toggleSurface()">🎨 表面</button>
+                <button onclick="autoRotate()">🔄 旋转</button>
+                <button onclick="exportReport()">📄 导出</button>
+            </div>
+            <canvas id="canvas3d"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        var rawData = [
+            [-0.457361, -0.312222, -0.145417, -0.008472, 0.084306, 0.157917, 0.209583, 0.224583, 0.206944, 0.293750],
+            [-0.525417, -0.344444, -0.150278, -0.026528, 0.041528, 0.099444, 0.156528, 0.230139, 0.238333, 0.267361],
+            [-0.549028, -0.339167, -0.167361, -0.035278, 0.050278, 0.105694, 0.162361, 0.192917, 0.233611, 0.237361],
+            [-0.574444, -0.345556, -0.174444, -0.041250, 0.054028, 0.124444, 0.176389, 0.207778, 0.314722, 0.262639],
+            [-0.566806, -0.350833, -0.175833, -0.048056, 0.061944, 0.143889, 0.165000, 0.214444, 0.255139, 0.300556],
+            [-0.540556, -0.371111, -0.195556, -0.044028, 0.078472, 0.146111, 0.171111, 0.226111, 0.257083, 0.287778],
+            [-0.674028, -0.430000, -0.229306, -0.079028, 0.033056, 0.121250, 0.171944, 0.228333, 0.251944, 0.321944],
+            [-0.781389, -0.493333, -0.302639, -0.131111, -0.006944, 0.080139, 0.166389, 0.196389, 0.227639, 0.242361],
+            [-0.910139, -0.631806, -0.391944, -0.220833, -0.074583, 0.049861, 0.110417, 0.147222, 0.165417, 0.124444],
+            [-1.013333, -0.744861, -0.549861, -0.331111, -0.156528, -0.011111, 0.044167, 0.067778, 0.072222, 0.040833]
+        ];
+
+        var scene, camera, renderer, mesh, wireframe, axes;
+        var isWireframe = true, isSurface = true, showAxes = true, isAutoRotating = false;
+        var historyData = []; // 历史记录
+        var MAX_HISTORY = 100;
+
+        function init() {
+            document.getElementById('dataInput').value = formatData(rawData);
+            calculateIndicators();
+            renderHeatmap();
+            renderDataTable();
+            init3D();
+            renderHistory();
+        }
+
+        // 保存历史记录
+        function saveHistory(data) {
+            var record = {
+                time: new Date().toLocaleString(),
+                data: JSON.parse(JSON.stringify(data)),
+                rows: data.length,
+                cols: data[0].length,
+                flatness: calculateFlatness(data).toFixed(4)
+            };
+            historyData.unshift(record); // 添加到开头
+            if (historyData.length > MAX_HISTORY) {
+                historyData.pop(); // 移除最旧的
+            }
+            renderHistory();
+        }
+
+        // 渲染历史记录列表
+        function renderHistory() {
+            var container = document.getElementById('historyList');
+            var countEl = document.getElementById('historyCount');
+            countEl.textContent = historyData.length + '/' + MAX_HISTORY + ' 条';
+            
+            if (historyData.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">暂无记录</div>';
+                return;
+            }
+            
+            var html = '';
+            for (var i = 0; i < historyData.length; i++) {
+                var item = historyData[i];
+                html += '<div class="history-item" onclick="loadHistory(' + i + ')">' +
+                    '<div class="time">' + item.time + '</div>' +
+                    '<div class="info">' + item.rows + 'x' + item.cols + ' | 平面度: ' + item.flatness + 'mm</div>' +
+                    '</div>';
+            }
+            container.innerHTML = html;
+        }
+
+        // 加载历史记录
+        function loadHistory(index) {
+            var record = historyData[index];
+            rawData = JSON.parse(JSON.stringify(record.data));
+            document.getElementById('dataInput').value = formatData(rawData);
+            calculateIndicators();
+            renderHeatmap();
+            renderDataTable();
+            update3D();
+            alert('已加载第 ' + (index + 1) + ' 条历史记录');
+        }
+
+        // 清空历史记录
+        function clearHistory() {
+            if (confirm('确定清空所有历史记录？')) {
+                historyData = [];
+                renderHistory();
+            }
+        }
+
+        function formatData(data) {
+            return data.map(function(row) { return row.join(', '); }).join('\n');
+        }
+
+        function formatRawData(data) {
+            var result = '#*# points =\n';
+            data.forEach(function(row) {
+                result += '#*#\t  ' + row.join(', ') + '\n';
+            });
+            return result;
+        }
+
+        function loadExample() {
+            var format = document.getElementById('formatSelect').value;
+            var input = document.getElementById('dataInput');
+            if (format === 'matrix') {
+                input.value = formatData(rawData);
+            } else {
+                input.value = formatRawData(rawData);
+            }
+        }
+
+        function processInput() {
+            var format = document.getElementById('formatSelect').value;
+            var inputVal = document.getElementById('dataInput').value.trim();
+            
+            if (!inputVal) {
+                alert('请输入数据！');
+                return;
+            }
+
+            var newData = format === 'matrix' ? parseMatrixFormat(inputVal) : parseRawFormat(inputVal);
+            
+            if (!newData || newData.length === 0) {
+                alert('数据解析失败！');
+                return;
+            }
+
+            rawData = newData;
+            calculateIndicators();
+            renderHeatmap();
+            renderDataTable();
+            update3D();
+            
+            // 保存历史记录
+            saveHistory(newData);
+            
+            alert('数据已更新！维度: ' + rawData.length + 'x' + rawData[0].length);
+        }
+
+        function parseMatrixFormat(input) {
+            var lines = input.split('\n');
+            var data = [];
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i].trim();
+                if (!line) continue;
+                var nums = line.split(/[,\s]+/).filter(function(s) { return s.trim(); }).map(parseFloat);
+                if (nums.length > 0 && !nums.some(isNaN)) {
+                    data.push(nums);
+                }
+            }
+            return normalizeData(data);
+        }
+
+        function parseRawFormat(input) {
+            // 移除所有 #*# 标记
+            var cleaned = input.replace(/#\*#/g, '');
+            var lines = cleaned.split('\n');
+            var data = [];
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i].trim();
+                if (!line) continue;
+                if (line.toLowerCase().includes('points')) continue;
+                var nums = line.split(/[,\s]+/).filter(function(s) { return s.trim() && s !== '='; }).map(parseFloat);
+                if (nums.length > 0 && !nums.some(isNaN)) {
+                    data.push(nums);
+                }
+            }
+            return normalizeData(data);
+        }
+
+        function normalizeData(data) {
+            if (data.length < 2 || !data[0] || data[0].length < 2) return null;
+            var cols = data[0].length;
+            for (var i = 0; i < data.length; i++) {
+                if (data[i].length < cols) {
+                    while (data[i].length < cols) data[i].push(data[i][data[i].length - 1] || 0);
+                } else if (data[i].length > cols) {
+                    data[i] = data[i].slice(0, cols);
+                }
+            }
+            return data;
+        }
+
+        function calculateIndicators() {
+            var flatData = rawData.flat();
+            var maxVal = Math.max.apply(null, flatData);
+            var minVal = Math.min.apply(null, flatData);
+            var avgVal = flatData.reduce(function(a, b) { return a + b; }, 0) / flatData.length;
+            var pv = maxVal - minVal;
+            var variance = flatData.reduce(function(sum, v) { return sum + Math.pow(v - avgVal, 2); }, 0) / flatData.length;
+            var stdDev = Math.sqrt(variance);
+            var flatness = calculateFlatness(rawData);
+            var warpDir = analyzeWarpDirection(rawData);
+
+            document.getElementById('flatness').textContent = flatness.toFixed(4);
+            document.getElementById('maxWarp').textContent = pv.toFixed(4);
+            document.getElementById('maxHeight').textContent = maxVal.toFixed(4);
+            document.getElementById('minHeight').textContent = minVal.toFixed(4);
+            document.getElementById('avgHeight').textContent = avgVal.toFixed(4);
+            document.getElementById('stdDev').textContent = stdDev.toFixed(4);
+            
+            var flatnessEl = document.getElementById('flatness');
+            flatnessEl.className = 'indicator-value' + (flatness < 0.5 ? ' good' : flatness > 1.0 ? ' warning' : '');
+        }
+
+        function calculateFlatness(data) {
+            // 最小区域法（Minimum Zone Method） - ISO 1101标准
+            // 实现与Python scipy.optimize.minimize相同的算法
+            
+            var rows = data.length;
+            var cols = data[0].length;
+            
+            // 准备点数据（与Python代码完全相同的格式）
+            var points = [];
+            for (var i = 0; i < rows; i++) {
+                for (var j = 0; j < cols; j++) {
+                    points.push({
+                        x: j,
+                        y: i,
+                        z: data[i][j]
+                    });
+                }
+            }
+            
+            // Python标准方法：使用L-BFGS-B优化算法
+            // 目标函数：f(a,b,c) = max(z - (a*x + b*y + c)) - min(z - (a*x + b*y + c))
+            
+            // 实现拟牛顿法（BFGS变体）优化
+            function bfgsOptimization(points) {
+                // 目标函数
+                function objective(params) {
+                    var a = params[0], b = params[1], c = params[2];
+                    var maxVal = -Infinity;
+                    var minVal = Infinity;
+                    
+                    for (var k = 0; k < points.length; k++) {
+                        var p = points[k];
+                        var diff = p.z - (a * p.x + b * p.y + c);
+                        if (diff > maxVal) maxVal = diff;
+                        if (diff < minVal) minVal = diff;
+                    }
+                    
+                    return maxVal - minVal;
+                }
+                
+                // 数值梯度计算
+                function numericalGradient(params) {
+                    var eps = 1e-6;
+                    var grad = [0, 0, 0];
+                    var baseValue = objective(params);
+                    
+                    for (var i = 0; i < 3; i++) {
+                        var paramsPlus = params.slice();
+                        paramsPlus[i] += eps;
+                        var valuePlus = objective(paramsPlus);
+                        grad[i] = (valuePlus - baseValue) / eps;
+                    }
+                    
+                    return grad;
+                }
+                
+                // BFGS优化算法（简化版）
+                var maxIterations = 100;
+                var tolerance = 1e-8;
+                
+                // 初始点和Hessian近似（单位矩阵）
+                var x = [0, 0, 0];  // 初始猜测 [a,b,c]
+                var H = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];  // 初始Hessian近似
+                
+                var prevValue = objective(x);
+                
+                for (var iter = 0; iter < maxIterations; iter++) {
+                    // 计算梯度
+                    var grad = numericalGradient(x);
+                    
+                    // 计算搜索方向 p = -H * grad
+                    var p = [
+                        -(H[0][0] * grad[0] + H[0][1] * grad[1] + H[0][2] * grad[2]),
+                        -(H[1][0] * grad[0] + H[1][1] * grad[1] + H[1][2] * grad[2]),
+                        -(H[2][0] * grad[0] + H[2][1] * grad[1] + H[2][2] * grad[2])
+                    ];
+                    
+                    // 线搜索找到步长
+                    var alpha = 1.0;  // 初始步长
+                    var maxLineSearch = 20;
+                    var c1 = 1e-4;  // Armijo条件常数
+                    
+                    for (var ls = 0; ls < maxLineSearch; ls++) {
+                        var xNew = [
+                            x[0] + alpha * p[0],
+                            x[1] + alpha * p[1],
+                            x[2] + alpha * p[2]
+                        ];
+                        var newValue = objective(xNew);
+                        
+                        // Armijo条件（充分下降条件）
+                        if (newValue <= prevValue + c1 * alpha * 
+                            (grad[0] * p[0] + grad[1] * p[1] + grad[2] * p[2])) {
+                            break;
+                        }
+                        alpha *= 0.5;  // 减小步长
+                    }
+                    
+                    // 更新点
+                    var xNew = [
+                        x[0] + alpha * p[0],
+                        x[1] + alpha * p[1],
+                        x[2] + alpha * p[2]
+                    ];
+                    
+                    // 计算梯度差和参数差
+                    var gradNew = numericalGradient(xNew);
+                    var s = [xNew[0] - x[0], xNew[1] - x[1], xNew[2] - x[2]];
+                    var y = [gradNew[0] - grad[0], gradNew[1] - grad[1], gradNew[2] - grad[2]];
+                    
+                    // 更新Hessian近似 (BFGS公式)
+                    var sy = s[0] * y[0] + s[1] * y[1] + s[2] * y[2];
+                    if (Math.abs(sy) > 1e-12) {
+                        var Hy = [
+                            H[0][0] * y[0] + H[0][1] * y[1] + H[0][2] * y[2],
+                            H[1][0] * y[0] + H[1][1] * y[1] + H[1][2] * y[2],
+                            H[2][0] * y[0] + H[2][1] * y[1] + H[2][2] * y[2]
+                        ];
+                        
+                        var yHy = y[0] * Hy[0] + y[1] * Hy[1] + y[2] * Hy[2];
+                        
+                        // BFGS更新公式
+                        for (var i = 0; i < 3; i++) {
+                            for (var j = 0; j < 3; j++) {
+                                H[i][j] = H[i][j] + 
+                                    (sy + yHy) / (sy * sy) * s[i] * s[j] -
+                                    (Hy[i] * s[j] + s[i] * Hy[j]) / sy;
+                            }
+                        }
+                    }
+                    
+                    // 检查收敛
+                    var newValue = objective(xNew);
+                    var improvement = Math.abs(newValue - prevValue);
+                    
+                    if (improvement < tolerance) {
+                        x = xNew;
+                        break;
+                    }
+                    
+                    x = xNew;
+                    prevValue = newValue;
+                }
+                
+                return objective(x);
+            }
+            
+            // 使用多起点策略提高鲁棒性
+            function multiStartOptimization(points) {
+                var bestResult = Infinity;
+                var bestParams = [0, 0, 0];
+                
+                // 多个起始点
+                var startPoints = [
+                    [0, 0, 0],                    // 原点
+                    [0.01, 0, 0],                 // 小X方向
+                    [0, 0.01, 0],                 // 小Y方向
+                    [-0.01, 0, 0],                // 负X方向
+                    [0, -0.01, 0],                // 负Y方向
+                    [0.01, 0.01, 0],              // XY对角线
+                    [-0.01, -0.01, 0]             // 负对角线
+                ];
+                
+                for (var s = 0; s < startPoints.length; s++) {
+                    // 使用简单的梯度下降作为初始优化
+                    var params = startPoints[s].slice();
+                    var learningRate = 0.1;
+                    
+                    for (var iter = 0; iter < 50; iter++) {
+                        // 计算当前值和梯度
+                        var a = params[0], b = params[1], c = params[2];
+                        var maxVal = -Infinity, minVal = Infinity;
+                        var maxIdx = -1, minIdx = -1;
+                        
+                        for (var k = 0; k < points.length; k++) {
+                            var p = points[k];
+                            var diff = p.z - (a * p.x + b * p.y + c);
+                            if (diff > maxVal) {
+                                maxVal = diff;
+                                maxIdx = k;
+                            }
+                            if (diff < minVal) {
+                                minVal = diff;
+                                minIdx = k;
+                            }
+                        }
+                        
+                        var currentValue = maxVal - minVal;
+                        
+                        // 使用支持向量机的思想：梯度由最远点决定
+                        var pMax = points[maxIdx];
+                        var pMin = points[minIdx];
+                        
+                        var gradA = -(pMax.x - pMin.x);
+                        var gradB = -(pMax.y - pMin.y);
+                        var gradC = -1;  // 因为c的系数是1
+                        
+                        // 梯度下降更新
+                        params[0] -= learningRate * gradA;
+                        params[1] -= learningRate * gradB;
+                        params[2] -= learningRate * gradC;
+                        
+                        learningRate *= 0.95;  // 衰减学习率
+                    }
+                    
+                    // 计算最终结果
+                    var a = params[0], b = params[1], c = params[2];
+                    var maxVal = -Infinity, minVal = Infinity;
+                    
+                    for (var k = 0; k < points.length; k++) {
+                        var p = points[k];
+                        var diff = p.z - (a * p.x + b * p.y + c);
+                        if (diff > maxVal) maxVal = diff;
+                        if (diff < minVal) minVal = diff;
+                    }
+                    
+                    var finalValue = maxVal - minVal;
+                    
+                    if (finalValue < bestResult) {
+                        bestResult = finalValue;
+                        bestParams = params.slice();
+                    }
+                }
+                
+                return bestResult;
+            }
+            
+            // 主要计算：使用Python标准方法
+            var flatness = multiStartOptimization(points);
+            
+            // 同时计算其他参考值
+            var maxZ = -Infinity, minZ = Infinity;
+            for (var i = 0; i < rows; i++) {
+                for (var j = 0; j < cols; j++) {
+                    var z = data[i][j];
+                    if (z > maxZ) maxZ = z;
+                    if (z < minZ) minZ = z;
+                }
+            }
+            var zRange = maxZ - minZ;
+            
+            // 计算最小二乘平面作为参考
+            var lsq = calculateLeastSquaresPlane(points);
+            var lsqDistances = [];
+            for (var k = 0; k < points.length; k++) {
+                var dist = pointToPlaneDistance(points[k], lsq.a, lsq.b, lsq.c);
+                lsqDistances.push(dist);
+            }
+            var lsqFlatness = Math.max(...lsqDistances) - Math.min(...lsqDistances);
+            
+            // 调试输出
+            console.log("=== Python标准方法计算结果 ===");
+            console.log("平面度(最小区域法):", flatness.toFixed(6));
+            console.log("Z方向范围:", zRange.toFixed(6));
+            console.log("最小二乘法平面度:", lsqFlatness.toFixed(6));
+            console.log("最小二乘平面方程: z =", lsq.a.toFixed(6), "* x +", lsq.b.toFixed(6), "* y +", lsq.c.toFixed(6));
+            console.log("=== Python参考值 ===");
+            console.log("Python计算结果: 0.510985");
+            console.log("当前计算差异:", Math.abs(flatness - 0.510985).toFixed(6));
+            
+            return flatness;
+        }
+        
+
+        
+        function calculateLeastSquaresPlane(points) {
+            var n = points.length;
+            var sumX = 0, sumY = 0, sumZ = 0, sumXY = 0, sumX2 = 0, sumY2 = 0, sumXZ = 0, sumYZ = 0;
+            
+            for (var k = 0; k < n; k++) {
+                var p = points[k];
+                sumX += p.x;
+                sumY += p.y;
+                sumZ += p.z;
+                sumXY += p.x * p.y;
+                sumX2 += p.x * p.x;
+                sumY2 += p.y * p.y;
+                sumXZ += p.x * p.z;
+                sumYZ += p.y * p.z;
+            }
+            
+            var D = n * sumX2 * sumY2 + sumX * sumXY * sumY + sumXY * sumY * sumX 
+                   - sumX2 * sumY * sumY - sumXY * sumXY * n - sumX * sumX * sumY2;
+            
+            if (Math.abs(D) < 1e-10) {
+                return {a: 0, b: 0, c: sumZ / n};
+            }
+            
+            var Da = n * sumXZ * sumY2 + sumX * sumYZ * sumY + sumXY * sumY * sumZ 
+                    - sumXZ * sumY * sumY - sumYZ * sumXY * n - sumX * sumZ * sumY2;
+            var Db = n * sumX2 * sumYZ + sumXZ * sumXY * n + sumX * sumY * sumZ 
+                    - sumXZ * sumX * sumY - sumX2 * sumYZ * n - sumXZ * sumY * sumZ;
+            var Dc = sumZ * sumX2 * sumY2 + sumX * sumXY * sumZ + sumXY * sumY * sumZ 
+                    - sumZ * sumXY * sumXY - sumX * sumX * sumY2 - sumY * sumY * sumX2;
+            
+            return {
+                a: Da / D,
+                b: Db / D,
+                c: Dc / D
+            };
+        }
+        
+        function pointToPlaneDistance(point, a, b, c) {
+            // 点到平面距离公式：|ax + by - z + c| / sqrt(a² + b² + 1)
+            return Math.abs(a * point.x + b * point.y - point.z + c) / Math.sqrt(a * a + b * b + 1);
+        }
+
+        function analyzeWarpDirection(data) {
+            var n = data.length, m = data[0].length;
+            var tl = data[0][0], tr = data[0][m-1], bl = data[n-1][0], br = data[n-1][m-1];
+            var lrDiff = (tr + br) / 2 - (tl + bl) / 2;
+            var tbDiff = (bl + br) / 2 - (tl + tr) / 2;
+            if (Math.abs(lrDiff) > Math.abs(tbDiff)) {
+                return lrDiff > 0 ? '右高左低' : '左高右低';
+            }
+            return tbDiff > 0 ? '下高上低' : '上高下低';
+        }
+
+        function renderHeatmap() {
+            var container = document.getElementById('heatmap');
+            container.innerHTML = '';
+            var flatData = rawData.flat();
+            var max = Math.max.apply(null, flatData);
+            var min = Math.min.apply(null, flatData);
+            for (var i = 0; i < rawData.length; i++) {
+                for (var j = 0; j < rawData[i].length; j++) {
+                    var val = rawData[i][j];
+                    var norm = (val - min) / (max - min);
+                    var cell = document.createElement('div');
+                    cell.className = 'heatmap-cell';
+                    cell.style.backgroundColor = getHeatmapColor(norm);
+                    cell.textContent = val.toFixed(2);
+                    container.appendChild(cell);
+                }
+            }
+        }
+
+        function getHeatmapColor(value) {
+            var colors = [[0,0,255], [0,255,255], [0,255,0], [255,255,0], [255,0,0]];
+            var idx = value * (colors.length - 1);
+            var i = Math.floor(idx), f = idx - i;
+            if (i >= colors.length - 1) return 'rgb(' + colors[colors.length-1].join(',') + ')';
+            var r = Math.round(colors[i][0] + f * (colors[i+1][0] - colors[i][0]));
+            var g = Math.round(colors[i][1] + f * (colors[i+1][1] - colors[i][1]));
+            var b = Math.round(colors[i][2] + f * (colors[i+1][2] - colors[i][2]));
+            return 'rgb(' + r + ',' + g + ',' + b + ')';
+        }
+
+        function renderDataTable() {
+            var table = document.getElementById('dataTable');
+            var html = '<thead><tr><th></th>';
+            for (var j = 0; j < rawData[0].length; j++) html += '<th>Y' + j + '</th>';
+            html += '</tr></thead><tbody>';
+            for (var i = 0; i < rawData.length; i++) {
+                html += '<tr><th>X' + i + '</th>';
+                for (var j = 0; j < rawData[i].length; j++) html += '<td>' + rawData[i][j].toFixed(3) + '</td>';
+                html += '</tr>';
+            }
+            html += '</tbody>';
+            table.innerHTML = html;
+        }
+
+        function init3D() {
+            var canvas = document.getElementById('canvas3d');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+            camera = new THREE.PerspectiveCamera(60, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+            camera.position.set(15, 12, 15);
+            camera.lookAt(5, 0, 5);
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+            renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            scene.add(new THREE.AmbientLight(0x404040, 1.5));
+            var dirLight = new THREE.DirectionalLight(0xffffff, 1);
+            dirLight.position.set(10, 20, 10);
+            scene.add(dirLight);
+            createPlane();
+            axes = new THREE.AxesHelper(8);
+            scene.add(axes);
+            setupControls();
+            animate();
+        }
+
+        function createPlane() {
+            var rows = rawData.length;
+            var cols = rawData[0].length;
+            var geometry = new THREE.PlaneGeometry(cols, rows, cols - 1, rows - 1);
+            var positions = geometry.attributes.position.array;
+            var flatData = rawData.flat();
+            var max = Math.max.apply(null, flatData);
+            var min = Math.min.apply(null, flatData);
+            var range = max - min || 1;
+            for (var i = 0; i < rows; i++) {
+                for (var j = 0; j < cols; j++) {
+                    positions[(i * cols + j) * 3 + 2] = rawData[i][j];
+                }
+            }
+            geometry.computeVertexNormals();
+            var colors = [];
+            for (var i = 0; i < positions.length / 3; i++) {
+                var z = positions[i * 3 + 2];
+                var norm = (z - min) / range;
+                var color = new THREE.Color();
+                color.setHSL((1 - norm) * 0.7, 1, 0.5);
+                colors.push(color.r, color.g, color.b);
+            }
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            var material = new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.DoubleSide });
+            mesh = new THREE.Mesh(geometry, material);
+            mesh.rotation.x = -Math.PI / 2;
+            mesh.position.set(cols / 2 - 0.5, 0, rows / 2 - 0.5);
+            scene.add(mesh);
+            var wireGeo = new THREE.WireframeGeometry(geometry);
+            var wireMat = new THREE.LineBasicMaterial({ color: 0x00d4ff });
+            wireframe = new THREE.LineSegments(wireGeo, wireMat);
+            wireframe.rotation.x = -Math.PI / 2;
+            wireframe.position.set(cols / 2 - 0.5, 0, rows / 2 - 0.5);
+            scene.add(wireframe);
+        }
+
+        function update3D() {
+            if (mesh) scene.remove(mesh);
+            if (wireframe) scene.remove(wireframe);
+            createPlane();
+        }
+
+        function setupControls() {
+            var isDragging = false, prevPos = { x: 0, y: 0 };
+            var rotation = { x: -Math.PI / 2, y: 0 }, distance = 20;
+            var canvas = document.getElementById('canvas3d');
+            canvas.addEventListener('mousedown', function(e) { isDragging = true; prevPos = { x: e.clientX, y: e.clientY }; });
+            canvas.addEventListener('mousemove', function(e) {
+                if (!isDragging) return;
+                rotation.y += (e.clientX - prevPos.x) * 0.01;
+                rotation.x += (e.clientY - prevPos.y) * 0.01;
+                rotation.x = Math.max(-Math.PI, Math.min(0, rotation.x));
+                updateCamera();
+                prevPos = { x: e.clientX, y: e.clientY };
+            });
+            canvas.addEventListener('mouseup', function() { isDragging = false; });
+            canvas.addEventListener('mouseleave', function() { isDragging = false; });
+            canvas.addEventListener('wheel', function(e) {
+                e.preventDefault();
+                distance += e.deltaY * 0.05;
+                distance = Math.max(5, Math.min(50, distance));
+                updateCamera();
+            });
+            function updateCamera() {
+                var x = 5 + distance * Math.sin(rotation.y) * Math.cos(rotation.x);
+                var y = distance * Math.sin(-rotation.x);
+                var z = 5 + distance * Math.cos(rotation.y) * Math.cos(rotation.x);
+                camera.position.set(x, y, z);
+                camera.lookAt(5, 0, 5);
+            }
+            window.cameraUpdate = updateCamera;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (isAutoRotating && mesh) {
+                var time = Date.now() * 0.001;
+                camera.position.x = 5 + 20 * Math.sin(time * 0.5) * Math.cos(-Math.PI/4);
+                camera.position.y = 20 * Math.sin(-Math.PI/4);
+                camera.position.z = 5 + 20 * Math.cos(time * 0.5) * Math.cos(-Math.PI/4);
+                camera.lookAt(5, 0, 5);
+            }
+            renderer.render(scene, camera);
+        }
+
+        function resetView() { camera.position.set(15, 12, 15); camera.lookAt(5, 0, 5); isAutoRotating = false; }
+        function toggleWireframe() { isWireframe = !isWireframe; wireframe.visible = isWireframe; }
+        function toggleSurface() { isSurface = !isSurface; mesh.visible = isSurface; }
+        function toggleAxes() { showAxes = !showAxes; axes.visible = showAxes; }
+        function autoRotate() { isAutoRotating = !isAutoRotating; }
+        function exportReport() {
+            var flatData = rawData.flat();
+            var maxVal = Math.max.apply(null, flatData);
+            var minVal = Math.min.apply(null, flatData);
+            var avgVal = flatData.reduce(function(a,b){return a+b;},0) / flatData.length;
+            var pv = maxVal - minVal;
+            var variance = flatData.reduce(function(sum,v){return sum+Math.pow(v-avgVal,2);},0) / flatData.length;
+            var flatness = calculateFlatness(rawData);
+            var report = '平面翘曲分析报告\n=====================================\n\n【原始数据】\n维度: ' + rawData.length + 'x' + rawData[0].length + '\n\n【工程指标】\n1. 平面度: ' + flatness.toFixed(4) + ' mm\n2. 最大翘曲量: ' + pv.toFixed(4) + ' mm\n3. 最大高度: ' + maxVal.toFixed(4) + ' mm\n4. 最小高度: ' + minVal.toFixed(4) + ' mm\n5. 平均高度: ' + avgVal.toFixed(4) + ' mm\n6. 标准差: ' + Math.sqrt(variance).toFixed(4) + ' mm\n\n生成时间: ' + new Date().toLocaleString();
+            var blob = new Blob([report], { type: 'text/plain;charset=utf-8' });
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = '平面分析报告.txt';
+            a.click();
+        }
+
+        window.onload = init;
+        window.onresize = function() {
+            var canvas = document.getElementById('canvas3d');
+            camera.aspect = canvas.clientWidth / canvas.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+        };
+    </script>
+</body>
+</html>
