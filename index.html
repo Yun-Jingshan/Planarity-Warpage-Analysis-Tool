@@ -32,9 +32,9 @@
         .data-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 15px; }
         .data-table th, .data-table td { padding: 4px 6px; text-align: center; border: 1px solid rgba(255,255,255,0.1); }
         .data-table th { background: rgba(0,212,255,0.2); }
-        .heatmap { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; margin: 15px 0; }
-        .heatmap-cell { aspect-ratio: 1; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 9px; cursor: pointer; }
-        .heatmap-cell:hover { transform: scale(1.2); z-index: 10; }
+        .heatmap { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; margin: 15px 0; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; background: rgba(0,0,0,0.2); }
+        .heatmap-cell { aspect-ratio: 1; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 9px; cursor: pointer; font-weight: bold; border: 1px solid rgba(0,0,0,0.3); transition: all 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.3); color: #fff; }
+        .heatmap-cell:hover { transform: scale(1.3); z-index: 10; box-shadow: 0 0 15px rgba(0,212,255,0.8); border-color: #00d4ff; }
         #canvas3d { width: 100%; height: 600px; border-radius: 10px; }
         .controls { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
         button { background: linear-gradient(135deg, #00d4ff, #0099cc); border: none; padding: 10px 20px; border-radius: 8px; color: #fff; cursor: pointer; font-weight: bold; }
@@ -113,6 +113,11 @@
             </div>
             <h3 style="margin: 20px 0 15px; color: #ffaa00;">🌡️ 热力图</h3>
             <div class="heatmap" id="heatmap"></div>
+            <div class="heatmap-legend" id="heatmapLegend" style="margin-top: 10px; display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: #aaa;">
+                <span id="minValue">低</span>
+                <div style="display: flex; flex: 1; margin: 0 10px; height: 15px; background: linear-gradient(90deg, blue, cyan, lime, yellow, red); border-radius: 5px;"></div>
+                <span id="maxValue">高</span>
+            </div>
             <h3 style="margin: 20px 0 15px; color: #ff6b6b;">📋 原始数据</h3>
             <div style="overflow-x: auto;"><table class="data-table" id="dataTable"></table></div>
         </div>
@@ -655,14 +660,27 @@
             var flatData = rawData.flat();
             var max = Math.max.apply(null, flatData);
             var min = Math.min.apply(null, flatData);
+            
+            // 更新图例数值
+            document.getElementById('minValue').textContent = min.toFixed(2);
+            document.getElementById('maxValue').textContent = max.toFixed(2);
+            
             for (var i = 0; i < rawData.length; i++) {
                 for (var j = 0; j < rawData[i].length; j++) {
                     var val = rawData[i][j];
                     var norm = (val - min) / (max - min);
                     var cell = document.createElement('div');
                     cell.className = 'heatmap-cell';
-                    cell.style.backgroundColor = getHeatmapColor(norm);
+                    var bgColor = getHeatmapColor(norm);
+                    cell.style.backgroundColor = bgColor;
+                    
+                    // 固定使用白色文字，添加黑色描边效果
+                    cell.style.color = '#fff';
+                    cell.style.textShadow = '0 0 2px #000, 0 0 2px #000, 0 0 2px #000, 0 0 2px #000';
+                    cell.style.borderColor = 'rgba(0,0,0,0.3)';
+                    
                     cell.textContent = val.toFixed(2);
+                    cell.title = '位置: (' + i + ',' + j + ') = ' + val.toFixed(4) + 'mm\n颜色: ' + bgColor;
                     container.appendChild(cell);
                 }
             }
