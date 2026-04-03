@@ -680,6 +680,7 @@
                     cell.style.borderColor = 'rgba(0,0,0,0.3)';
                     
                     cell.textContent = val.toFixed(2);
+                    cell.style.textShadow = '0 0 3px black, 0 0 1px black';
                     cell.title = '位置: (' + i + ',' + j + ') = ' + val.toFixed(4) + 'mm\n颜色: ' + bgColor;
                     container.appendChild(cell);
                 }
